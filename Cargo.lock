@@ -546,6 +546,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
+name = "example-ws"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "salvo",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "example-ws-chat"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "once_cell",
+ "salvo",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2224,17 +2248,6 @@ name = "windows_x86_64_msvc"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
-
-[[package]]
-name = "ws"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "salvo",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "zeroize"
