@@ -1,5 +1,5 @@
 [package]
-name = "example-ws-chat"
+name = "example-ws-chat-new"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,3 +13,5 @@ tokio = { version = "1.21.0", features = ["macros"] }
 tokio-stream = { version = "0.1.9", features = ["net"] }
 tracing = "0.1.36"
 tracing-subscriber = "0.3.15"
+
+salvo-websocket = { path = "../../salvo-websocket" }
