@@ -1,1 +1,3 @@
-use websocket::WebSocket;
+mod websocket;
+
+use websocket::WebSocketHandler;
