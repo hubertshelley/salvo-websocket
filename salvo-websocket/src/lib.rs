@@ -1,4 +1,7 @@
+extern crate core;
+
 #[deny(doc)]
 mod websocket;
 
-use websocket::WebSocketHandler;
+pub use websocket::WebSocketHandler;
+pub use websocket::WS_CONTROLLER;

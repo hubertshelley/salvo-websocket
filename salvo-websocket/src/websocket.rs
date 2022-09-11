@@ -1,24 +1,22 @@
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use salvo::Error;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use once_cell::sync::Lazy;
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-
-use salvo::extra::ws::{Message, WebSocket, WebSocketUpgrade};
+use salvo::extra::ws::{Message, WebSocket};
 use salvo::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 
-struct WebSocketController<T: WebSocketHandler> {
-    pub ws_list: HashMap<AtomicUsize, T>,
+pub struct WebSocketController {
     pub caller_book: HashMap<String, Vec<UnboundedSender<Result<Message, Error>>>>,
 }
 
-impl<T: WebSocketHandler> WebSocketController<T> {
+impl WebSocketController {
     pub fn new() -> Self {
         WebSocketController {
-            ws_list: HashMap::new(),
             caller_book: HashMap::new(),
         }
     }
@@ -27,10 +25,10 @@ impl<T: WebSocketHandler> WebSocketController<T> {
     pub fn send_group(&mut self, group: String, message: Message) -> Result<(), Error> {
         let senders = self.caller_book.get(group.as_str());
         match senders {
-            None => Err("群组不存在".into()),
+            None => panic!("群组不存在"),
             Some(senders) => {
                 for sender in senders.iter() {
-                    sender.send(Ok(message.clone()))
+                    sender.send(Ok(message.clone())).unwrap();
                 }
                 Ok(())
             }
@@ -43,42 +41,32 @@ impl<T: WebSocketHandler> WebSocketController<T> {
         group: String,
         sender: UnboundedSender<Result<Message, Error>>,
     ) -> Result<(), Error> {
-        let senders = self.caller_book.get(group.as_str());
-        match senders {
+        match self.caller_book.get_mut(group.as_str()) {
             None => {
                 self.caller_book.insert(group, vec![sender]);
-                Ok(())
             }
-            Some(mut senders) => {
+            Some(senders) => {
                 senders.insert(0, sender);
-                Ok(())
             }
-        }
+        };
+        Ok(())
     }
 }
 
-pub static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
-pub static WS_CONTROLLER: Arc<RwLock<WebSocketController<dyn WebSocketHandler>>> = Arc::new(
-    RwLock::new(WebSocketController::<dyn WebSocketHandler>::new()),
-);
+impl Default for WebSocketController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+type Controller = RwLock<WebSocketController>;
+
+static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
+pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
 #[async_trait]
-pub trait WebSocketHandler: Handler {
-    /// Handle http request.
-    async fn handle(
-        &self,
-        req: &mut Request,
-        depot: &mut Depot,
-        res: &mut Response,
-        ctrl: &mut FlowCtrl,
-    ) -> Result<(), Error> {
-        let _self: Self = req.parse_params()?;
-        WebSocketUpgrade::new()
-            .handle(req, res, _self.handle_socket)
-            .await
-    }
-
-    async fn handle_socket(&self, ws: WebSocket) {
+pub trait WebSocketHandler {
+    async fn handle_socket(&'static self, ws: WebSocket) {
         // Use a counter to assign a new unique ID for this user.
         let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -98,7 +86,7 @@ pub trait WebSocketHandler: Handler {
         });
         tokio::task::spawn(fut);
         let fut = async move {
-            self.on_connected(ws_id).await;
+            self.on_connected(ws_id, sender).await;
 
             while let Some(result) = ws_reader.next().await {
                 let msg = match result {
@@ -108,38 +96,53 @@ pub trait WebSocketHandler: Handler {
                         break;
                     }
                 };
-                self.receive_message(msg).await;
+                self.on_receive_message(msg).await;
             }
 
-            self.on_disconnected().await;
+            self.on_disconnected(ws_id).await;
         };
         tokio::task::spawn(fut);
     }
 
-    async fn on_connected(&self, ws_id: AtomicUsize) -> Result<(), Error>;
+    async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>);
 
-    async fn on_disconnected(&self, ws_id: AtomicUsize) -> Result<(), Error>;
+    async fn on_disconnected(&self, ws_id: usize);
 
-    async fn receive_message(&self, msg: Message) -> Result<(), Error>;
+    async fn on_receive_message(&self, msg: Message);
 
-    async fn send_message(&self, msg: Message) -> Result<Message, Error>;
+    async fn on_send_message(&self, msg: Message) -> Result<Message, Error>;
 }
 
 #[cfg(test)]
 mod test {
+    use salvo::Error;
+    use salvo::extra::ws::Message;
+    use tokio::sync::mpsc::UnboundedSender;
+    use crate::websocket::WS_CONTROLLER;
 
-    struct User {
-        name: String,
-    }
-
-    impl super::WebSocketHandler for User {
-        async fn on_connected(&self, ws_id:AtomicUsize)
-    }
+    // struct User {
+    //     name: String,
+    // }
+    //
+    // #[async_trait]
+    // impl super::WebSocketHandler for User {
+    //     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
+    //         WS_CONTROLLER.write().await.join_group("group1".to_string(), sender);
+    //     }
+    //     async fn on_disconnected(&self, ws_id: usize) {}
+    //     async fn on_receive_message(&self, msg: Message) {
+    //         eprintln!("{:?}", msg);
+    //     }
+    //     async fn on_send_message(&self, msg: Message) -> Result<Message, Error> {
+    //         eprintln!("{:?}", msg);
+    //         Ok(msg)
+    //     }
+    // }
 
     #[tokio::test]
     async fn websocket_test() {
-        user = User {
-            name: "test_user".to_string(),
-        }
+        // let user = User {
+        //     name: "test_user".to_string(),
+        // };
     }
 }
