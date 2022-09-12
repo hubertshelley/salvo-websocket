@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 futures-util = { version = "0.3.24", default-features = false }
-salvo = { version = "0.33.1", features = ["extra"] }
+salvo = { version = "0.34.0", features = ["extra"] }
 tokio = { version = "1.21.0", features = ["macros"] }
 tracing = "0.1.36"
 tracing-subscriber = "0.3.15"

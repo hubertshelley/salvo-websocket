@@ -3,7 +3,9 @@
 //
 // port from https://github.com/seanmonstar/warp/blob/master/examples/websocket_chat.rs
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures_util::{FutureExt, StreamExt};
@@ -16,7 +18,7 @@ use salvo::extra::ws::{Message, WebSocket, WebSocketUpgrade};
 use salvo::http::ParseError;
 use salvo::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
-use salvo_websocket::{WebSocketHandler, WS_CONTROLLER};
+use salvo_websocket::{handle_socket, WebSocketHandler, WS_CONTROLLER};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,14 +59,7 @@ async fn main() {
 
 #[handler]
 async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let user: Result<User, ParseError> = req.parse_queries();
-    match user {
-        Ok(user) => {
-            let user: &'static User = &user.clone();
-            WebSocketUpgrade::new().handle(req, res, |ws| async { user.handle_socket(ws).await }).await
-        }
-        Err(_) => { Err(StatusError::bad_request()) }
-    }
+    WebSocketUpgrade::new().handle(req, res, handle_socket).await
 }
 
 #[handler]

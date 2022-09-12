@@ -64,46 +64,48 @@ type Controller = RwLock<WebSocketController>;
 static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
 pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
+
+pub async fn handle_socket<T: WebSocketHandler>(mut ws: WebSocket) {
+    let _self: T = ws.req.parse_queries().unwrap();
+    // Use a counter to assign a new unique ID for this user.
+    let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
+
+    tracing::info!("new ws connected: {}", ws_id);
+
+    // Split the socket into a sender and receive of messages.
+    let (ws_sender, mut ws_reader) = ws.split();
+
+    // Use an unbounded channel to handle buffering and flushing of messages
+    // to the websocket...
+    let (sender, reader) = mpsc::unbounded_channel();
+    let reader = UnboundedReceiverStream::new(reader);
+    let fut = reader.forward(ws_sender).map(|result| {
+        if let Err(e) = result {
+            tracing::error!(error = ?e, "websocket send error");
+        }
+    });
+    tokio::task::spawn(fut);
+    let fut = async move {
+        _self.on_connected(ws_id, sender).await;
+
+        while let Some(result) = ws_reader.next().await {
+            let msg = match result {
+                Ok(msg) => msg,
+                Err(e) => {
+                    eprintln!("websocket error(uid={}): {}", ws_id, e);
+                    break;
+                }
+            };
+            _self.on_receive_message(msg).await;
+        }
+
+        _self.on_disconnected(ws_id).await;
+    };
+    tokio::task::spawn(fut);
+}
+
 #[async_trait]
 pub trait WebSocketHandler {
-    async fn handle_socket(&'static self, ws: WebSocket) {
-        // Use a counter to assign a new unique ID for this user.
-        let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
-
-        tracing::info!("new ws connected: {}", ws_id);
-
-        // Split the socket into a sender and receive of messages.
-        let (ws_sender, mut ws_reader) = ws.split();
-
-        // Use an unbounded channel to handle buffering and flushing of messages
-        // to the websocket...
-        let (sender, reader) = mpsc::unbounded_channel();
-        let reader = UnboundedReceiverStream::new(reader);
-        let fut = reader.forward(ws_sender).map(|result| {
-            if let Err(e) = result {
-                tracing::error!(error = ?e, "websocket send error");
-            }
-        });
-        tokio::task::spawn(fut);
-        let fut = async move {
-            self.on_connected(ws_id, sender).await;
-
-            while let Some(result) = ws_reader.next().await {
-                let msg = match result {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        eprintln!("websocket error(uid={}): {}", ws_id, e);
-                        break;
-                    }
-                };
-                self.on_receive_message(msg).await;
-            }
-
-            self.on_disconnected(ws_id).await;
-        };
-        tokio::task::spawn(fut);
-    }
-
     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>);
 
     async fn on_disconnected(&self, ws_id: usize);
