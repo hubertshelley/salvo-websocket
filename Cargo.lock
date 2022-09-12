@@ -1438,7 +1438,7 @@ dependencies = [
 [[package]]
 name = "salvo"
 version = "0.34.0"
-source = "git+https://gitee.com/hubert22/salvo.git#8276e69a82618b98a00b25f78ef0d920a6a36942"
+source = "git+https://gitee.com/hubert22/salvo.git#ad9915d841413b55723d1934271c0548424ef530"
 dependencies = [
  "salvo_core 0.34.0 (git+https://gitee.com/hubert22/salvo.git)",
  "salvo_extra 0.34.0 (git+https://gitee.com/hubert22/salvo.git)",
@@ -1503,7 +1503,7 @@ dependencies = [
 [[package]]
 name = "salvo_core"
 version = "0.34.0"
-source = "git+https://gitee.com/hubert22/salvo.git#8276e69a82618b98a00b25f78ef0d920a6a36942"
+source = "git+https://gitee.com/hubert22/salvo.git#ad9915d841413b55723d1934271c0548424ef530"
 dependencies = [
  "Inflector",
  "async-compression",
@@ -1583,7 +1583,7 @@ dependencies = [
 [[package]]
 name = "salvo_extra"
 version = "0.34.0"
-source = "git+https://gitee.com/hubert22/salvo.git#8276e69a82618b98a00b25f78ef0d920a6a36942"
+source = "git+https://gitee.com/hubert22/salvo.git#ad9915d841413b55723d1934271c0548424ef530"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1637,7 +1637,7 @@ dependencies = [
 [[package]]
 name = "salvo_macros"
 version = "0.34.0"
-source = "git+https://gitee.com/hubert22/salvo.git#8276e69a82618b98a00b25f78ef0d920a6a36942"
+source = "git+https://gitee.com/hubert22/salvo.git#ad9915d841413b55723d1934271c0548424ef530"
 dependencies = [
  "Inflector",
  "darling",

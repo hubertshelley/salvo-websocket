@@ -65,8 +65,8 @@ static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
 pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
 
-pub async fn handle_socket<T: WebSocketHandler>(mut ws: WebSocket) {
-    let _self: T = ws.req.parse_queries().unwrap();
+pub async fn handle_socket<T: WebSocketHandler>(ws: WebSocket) {
+    // let _self: T = ws.req.parse_queries().unwrap();
     // Use a counter to assign a new unique ID for this user.
     let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -86,7 +86,8 @@ pub async fn handle_socket<T: WebSocketHandler>(mut ws: WebSocket) {
     });
     tokio::task::spawn(fut);
     let fut = async move {
-        _self.on_connected(ws_id, sender).await;
+        // _self.on_connected(ws_id, sender).await;
+        on_connected(ws_id, sender).await;
 
         while let Some(result) = ws_reader.next().await {
             let msg = match result {
@@ -96,12 +97,27 @@ pub async fn handle_socket<T: WebSocketHandler>(mut ws: WebSocket) {
                     break;
                 }
             };
-            _self.on_receive_message(msg).await;
+            send_msg(ws_id, msg).await;
+            // _self.on_receive_message(msg).await;
         }
 
-        _self.on_disconnected(ws_id).await;
+        // _self.on_disconnected(ws_id).await;
     };
     tokio::task::spawn(fut);
+}
+
+async fn on_connected(ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
+    WS_CONTROLLER.write().await.join_group("group1".to_string(), sender).unwrap();
+}
+
+async fn send_msg(ws_id: usize, msg: Message) {
+    let msg = if let Ok(s) = msg.to_str() {
+        s
+    } else {
+        return;
+    };
+    let new_msg = format!("<User#{}>: {}", ws_id, msg);
+    WS_CONTROLLER.write().await.send_group("group1".to_string(), Message::text(new_msg.clone())).unwrap();
 }
 
 #[async_trait]
