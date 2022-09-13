@@ -59,7 +59,15 @@ async fn main() {
 
 #[handler]
 async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    WebSocketUpgrade::new().handle(req, res, handle_socket::<User>).await
+    let user = req.parse_queries();
+    match user {
+        Ok(user) => {
+            WebSocketUpgrade::new().handle(req, res, |mut ws| async move { handle_socket(ws, user) }).await
+        }
+        Err(err) => {
+            Err(StatusError::bad_request())
+        }
+    }
 }
 
 #[handler]
