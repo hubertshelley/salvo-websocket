@@ -29,20 +29,33 @@ struct User {
 #[async_trait]
 impl WebSocketHandler for User {
     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
-        eprintln!("{} connected", ws_id);
-        WS_CONTROLLER.write().await.join_group("group".to_string(), sender);
+        tracing::info!("{} connected", ws_id);
+        // eprintln!("{} connected", ws_id);
+        match WS_CONTROLLER.write().await.send_group("group".to_string(), Message::text(format!("{:?} joined!", self.name))) {
+            Ok(_) => {
+                WS_CONTROLLER.write().await.join_group("group".to_string(), sender).unwrap();
+            }
+            Err(e) => {
+                eprintln!("{:?}", e);
+                WS_CONTROLLER.write().await.join_group("group".to_string(), sender).unwrap();
+            }
+        };
     }
 
     async fn on_disconnected(&self, ws_id: usize) {
-        eprintln!("{} disconnected", ws_id);
+        tracing::info!("{} disconnected", ws_id);
+        // eprintln!("{} disconnected", ws_id);
     }
 
     async fn on_receive_message(&self, msg: Message) {
-        eprintln!("{:?} received", msg);
+        tracing::info!("{:?} received", msg);
+        // eprintln!("{:?} received", msg);
+        WS_CONTROLLER.write().await.send_group("group".to_string(), msg).unwrap();
     }
 
     async fn on_send_message(&self, msg: Message) -> Result<Message, Error> {
         eprintln!("{:?} sending", msg);
+        tracing::info!("{:?} sending", msg);
         Ok(msg)
     }
 }
@@ -59,12 +72,15 @@ async fn main() {
 
 #[handler]
 async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let user = req.parse_queries();
+    let user: Result<User, ParseError> = req.parse_queries();
     match user {
         Ok(user) => {
-            WebSocketUpgrade::new().handle(req, res, |mut ws| async move { handle_socket(ws, user) }).await
+            WebSocketUpgrade::new().handle(req, res, |mut ws| async move {
+                eprintln!("{:?} linked", user);
+                handle_socket(ws, user).await;
+            }).await
         }
-        Err(err) => {
+        Err(_err) => {
             Err(StatusError::bad_request())
         }
     }
@@ -75,49 +91,4 @@ async fn index(res: &mut Response) {
     res.render(Text::Html(INDEX_HTML));
 }
 
-static INDEX_HTML: &str = r#"<!DOCTYPE html>
-<html>
-    <head>
-        <title>WS Chat</title>
-    </head>
-    <body>
-        <h1>WS Chat</h1>
-        <div id="chat">
-            <p><em>Connecting...</em></p>
-        </div>
-        <input type="text" id="text" />
-        <button type="button" id="submit">Submit</button>
-        <script>
-            const chat = document.getElementById('chat');
-            const msg = document.getElementById('msg');
-            const submit = document.getElementById('submit');
-            const ws = new WebSocket(`ws://${location.host}/chat`);
-
-            ws.onopen = function() {
-                chat.innerHTML = '<p><em>Connected!</em></p>';
-            };
-
-            ws.onmessage = function(msg) {
-                showMessage(msg.data);
-            };
-
-            ws.onclose = function() {
-                chat.getElementsByTagName('em')[0].innerText = 'Disconnected!';
-            };
-
-            submit.onclick = function() {
-                const msg = text.value;
-                ws.send(msg);
-                text.value = '';
-
-                showMessage('<You>: ' + msg);
-            };
-            function showMessage(data) {
-                const line = document.createElement('p');
-                line.innerText = data;
-                chat.appendChild(line);
-            }
-        </script>
-    </body>
-</html>
-"#;
+static INDEX_HTML: &str = include_str!("./index.html");

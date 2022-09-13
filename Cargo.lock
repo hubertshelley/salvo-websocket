@@ -1479,6 +1479,7 @@ dependencies = [
 name = "salvo-websocket"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "dashmap",
  "futures-util",
@@ -1497,6 +1498,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cb1d2a45b2e63bafa298626171027ae1a9def7a21fca81c341b50f920887f6a"
 dependencies = [
  "Inflector",
+ "anyhow",
  "async-compression",
  "async-trait",
  "base64 0.13.0",

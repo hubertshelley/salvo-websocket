@@ -22,10 +22,10 @@ impl WebSocketController {
     }
 
     /// 发送消息到群组
-    pub fn send_group(&mut self, group: String, message: Message) -> Result<(), Error> {
+    pub fn send_group(&mut self, group: String, message: Message) -> Result<(), anyhow::Error> {
         let senders = self.caller_book.get(group.as_str());
         match senders {
-            None => panic!("群组不存在"),
+            None => Err(anyhow::anyhow!("群组不存在")),
             Some(senders) => {
                 for sender in senders.iter() {
                     sender.send(Ok(message.clone())).unwrap();
@@ -65,7 +65,7 @@ static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
 pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
 
-pub async fn handle_socket<T: WebSocketHandler + Send + Sync>(ws: WebSocket, _self: T) {
+pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebSocket, _self: T) {
     // let _self: T = ws.req.parse_queries().unwrap();
     // Use a counter to assign a new unique ID for this user.
     let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
@@ -97,6 +97,7 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync>(ws: WebSocket, _se
                 }
             };
             // send_msg(ws_id, msg).await;
+            eprintln!("on_receive_message message(uid={}): {:?}", ws_id, msg);
             _self.on_receive_message(msg).await;
         }
 
