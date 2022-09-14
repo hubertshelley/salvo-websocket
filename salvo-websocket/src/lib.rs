@@ -1,5 +1,5 @@
 //! This crate is websocket tool for salvo.
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 extern crate core;
 
 mod websocket;
