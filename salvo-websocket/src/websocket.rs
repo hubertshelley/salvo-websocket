@@ -2,7 +2,6 @@ use futures_util::{FutureExt, StreamExt};
 use salvo::Error;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use once_cell::sync::Lazy;
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -66,7 +65,6 @@ pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
 
 pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebSocket, _self: T) {
-    // let _self: T = ws.req.parse_queries().unwrap();
     // Use a counter to assign a new unique ID for this user.
     let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -80,6 +78,7 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
     let (sender, reader) = mpsc::unbounded_channel();
     let reader = UnboundedReceiverStream::new(reader);
     let fut = reader.forward(ws_sender).map(|result| {
+        eprintln!("{:?}", result);
         if let Err(e) = result {
             tracing::error!(error = ?e, "websocket send error");
         }
@@ -96,7 +95,6 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
                     break;
                 }
             };
-            // send_msg(ws_id, msg).await;
             eprintln!("on_receive_message message(uid={}): {:?}", ws_id, msg);
             _self.on_receive_message(msg).await;
         }
@@ -104,20 +102,6 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
         _self.on_disconnected(ws_id).await;
     };
     tokio::task::spawn(fut);
-}
-
-async fn on_connected(ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
-    WS_CONTROLLER.write().await.join_group("group1".to_string(), sender).unwrap();
-}
-
-async fn send_msg(ws_id: usize, msg: Message) {
-    let msg = if let Ok(s) = msg.to_str() {
-        s
-    } else {
-        return;
-    };
-    let new_msg = format!("<User#{}>: {}", ws_id, msg);
-    WS_CONTROLLER.write().await.send_group("group1".to_string(), Message::text(new_msg.clone())).unwrap();
 }
 
 #[async_trait]
