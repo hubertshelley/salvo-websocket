@@ -22,19 +22,28 @@ impl WebSocketController {
 
     /// 发送消息到群组
     pub fn send_group(&mut self, group: String, message: Message) -> Result<(), anyhow::Error> {
-        let senders = self.caller_book.get(group.as_str());
+        let senders = self.caller_book.get_mut(group.as_str());
         match senders {
             None => Err(anyhow::anyhow!("群组不存在")),
             Some(senders) => {
-                for sender in senders.iter() {
-                    sender.send(Ok(message.clone())).unwrap();
+                let mut pre_delete_list = vec![];
+                for (index, sender) in senders.iter().enumerate() {
+                    match sender.send(Ok(message.clone())) {
+                        Ok(_) => {}
+                        Err(_) => {
+                            pre_delete_list.push(index);
+                        }
+                    };
+                }
+                for delete_index in pre_delete_list {
+                    senders.remove(delete_index);
                 }
                 Ok(())
             }
         }
     }
 
-    ///加入群组
+    /// 加入群组
     pub fn join_group(
         &mut self,
         group: String,
@@ -61,9 +70,10 @@ impl Default for WebSocketController {
 type Controller = RwLock<WebSocketController>;
 
 static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
+/// 全局默认websocket控制器
 pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
-
+/// salvo websocket 处理方法
 pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebSocket, _self: T) {
     // Use a counter to assign a new unique ID for this user.
     let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
@@ -105,22 +115,27 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
 }
 
 #[async_trait]
+/// websocket处理器trait
 pub trait WebSocketHandler {
+    /// websocket客户端连接事件
     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>);
 
+    /// websocket客户端断开事件
     async fn on_disconnected(&self, ws_id: usize);
 
+    /// websocket客户端收到消息事件
     async fn on_receive_message(&self, msg: Message);
 
+    /// websocket客户端发送消息事件
     async fn on_send_message(&self, msg: Message) -> Result<Message, Error>;
 }
 
 #[cfg(test)]
 mod test {
-    use salvo::Error;
-    use salvo::extra::ws::Message;
-    use tokio::sync::mpsc::UnboundedSender;
-    use crate::websocket::WS_CONTROLLER;
+    // use salvo::Error;
+    // use salvo::extra::ws::Message;
+    // use tokio::sync::mpsc::UnboundedSender;
+    // use crate::websocket::WS_CONTROLLER;
 
     // struct User {
     //     name: String,
