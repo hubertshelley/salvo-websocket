@@ -3,21 +3,52 @@
 //
 // port from https://github.com/seanmonstar/warp/blob/master/examples/websocket_chat.rs
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use futures_util::{FutureExt, StreamExt};
-use once_cell::sync::Lazy;
-use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::UnboundedReceiverStream;
-
-use salvo::extra::ws::{Message, WebSocket, WebSocketUpgrade};
+use salvo::Error;
+use salvo::extra::ws::{Message, WebSocketUpgrade};
+use salvo::http::ParseError;
 use salvo::prelude::*;
+use tokio::sync::mpsc::UnboundedSender;
+use salvo_websocket::{handle_socket, WebSocketHandler, WS_CONTROLLER};
+use serde::Deserialize;
 
-type Users = RwLock<HashMap<usize, mpsc::UnboundedSender<Result<Message, salvo::Error>>>>;
+#[derive(Debug, Clone, Deserialize)]
+struct User {
+    name: String,
+    room: String,
+}
 
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
-static ONLINE_USERS: Lazy<Users> = Lazy::new(Users::default);
+#[async_trait]
+impl WebSocketHandler for User {
+    async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
+        tracing::info!("{} connected", ws_id);
+        WS_CONTROLLER.write().await.join_group(self.room.clone(), sender).unwrap();
+        WS_CONTROLLER.write().await.send_group(
+            self.room.clone(),
+            Message::text(format!("{:?} joined!", self.name)
+            ),
+        ).unwrap();
+    }
+
+    async fn on_disconnected(&self, ws_id: usize) {
+        tracing::info!("{} disconnected", ws_id);
+    }
+
+    async fn on_receive_message(&self, msg: Message) {
+        tracing::info!("{:?} received", msg);
+        let msg = if let Ok(s) = msg.to_str() {
+            s
+        } else {
+            return;
+        };
+        let new_msg = format!("<User#{}>: {}", self.name, msg);
+        WS_CONTROLLER.write().await.send_group(self.room.clone(), Message::text(new_msg.clone())).unwrap();
+    }
+
+    async fn on_send_message(&self, msg: Message) -> Result<Message, Error> {
+        tracing::info!("{:?} sending", msg);
+        Ok(msg)
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -31,72 +62,17 @@ async fn main() {
 
 #[handler]
 async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    WebSocketUpgrade::new().handle(req, res, handle_socket).await
-}
-
-async fn handle_socket(ws: WebSocket) {
-    // Use a counter to assign a new unique ID for this user.
-    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
-
-    tracing::info!("new chat user: {}", my_id);
-
-    // Split the socket into a sender and receive of messages.
-    let (user_ws_tx, mut user_ws_rx) = ws.split();
-
-    // Use an unbounded channel to handle buffering and flushing of messages
-    // to the websocket...
-    let (tx, rx) = mpsc::unbounded_channel();
-    let rx = UnboundedReceiverStream::new(rx);
-    let fut = rx.forward(user_ws_tx).map(|result| {
-        if let Err(e) = result {
-            tracing::error!(error = ?e, "websocket send error");
+    let user: Result<User, ParseError> = req.parse_queries();
+    match user {
+        Ok(user) => {
+            WebSocketUpgrade::new().handle(req, res, |ws| async move {
+                handle_socket(ws, user).await;
+            }).await
         }
-    });
-    tokio::task::spawn(fut);
-    let fut = async move {
-        ONLINE_USERS.write().await.insert(my_id, tx);
-
-        while let Some(result) = user_ws_rx.next().await {
-            let msg = match result {
-                Ok(msg) => msg,
-                Err(e) => {
-                    eprintln!("websocket error(uid={}): {}", my_id, e);
-                    break;
-                }
-            };
-            user_message(my_id, msg).await;
-        }
-
-        user_disconnected(my_id).await;
-    };
-    tokio::task::spawn(fut);
-}
-
-async fn user_message(my_id: usize, msg: Message) {
-    let msg = if let Ok(s) = msg.to_str() {
-        s
-    } else {
-        return;
-    };
-
-    let new_msg = format!("<User#{}>: {}", my_id, msg);
-
-    // New message from this user, send it to everyone else (except same uid)...
-    for (&uid, tx) in ONLINE_USERS.read().await.iter() {
-        if my_id != uid {
-            if let Err(_disconnected) = tx.send(Ok(Message::text(new_msg.clone()))) {
-                // The tx is disconnected, our `user_disconnected` code
-                // should be happening in another task, nothing more to
-                // do here.
-            }
+        Err(_err) => {
+            Err(StatusError::bad_request())
         }
     }
-}
-
-async fn user_disconnected(my_id: usize) {
-    eprintln!("good bye user: {}", my_id);
-    // Stream closed up, so remove from the user list
-    ONLINE_USERS.write().await.remove(&my_id);
 }
 
 #[handler]
@@ -104,49 +80,4 @@ async fn index(res: &mut Response) {
     res.render(Text::Html(INDEX_HTML));
 }
 
-static INDEX_HTML: &str = r#"<!DOCTYPE html>
-<html>
-    <head>
-        <title>WS Chat</title>
-    </head>
-    <body>
-        <h1>WS Chat</h1>
-        <div id="chat">
-            <p><em>Connecting...</em></p>
-        </div>
-        <input type="text" id="text" />
-        <button type="button" id="submit">Submit</button>
-        <script>
-            const chat = document.getElementById('chat');
-            const msg = document.getElementById('msg');
-            const submit = document.getElementById('submit');
-            const ws = new WebSocket(`ws://${location.host}/chat`);
-
-            ws.onopen = function() {
-                chat.innerHTML = '<p><em>Connected!</em></p>';
-            };
-
-            ws.onmessage = function(msg) {
-                showMessage(msg.data);
-            };
-
-            ws.onclose = function() {
-                chat.getElementsByTagName('em')[0].innerText = 'Disconnected!';
-            };
-
-            submit.onclick = function() {
-                const msg = text.value;
-                ws.send(msg);
-                text.value = '';
-
-                showMessage('<You>: ' + msg);
-            };
-            function showMessage(data) {
-                const line = document.createElement('p');
-                line.innerText = data;
-                chat.appendChild(line);
-            }
-        </script>
-    </body>
-</html>
-"#;
+static INDEX_HTML: &str = include_str!("./index.html");
