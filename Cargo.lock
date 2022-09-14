@@ -558,31 +558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
-name = "example-ws"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "salvo",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "example-ws-chat"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "once_cell",
- "salvo",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "example-ws-chat-new"
 version = "0.1.0"
 dependencies = [
  "futures-util",
