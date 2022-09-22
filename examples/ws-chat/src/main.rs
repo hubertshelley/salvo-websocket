@@ -65,7 +65,7 @@ async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), Sta
     let user: Result<User, ParseError> = req.parse_queries();
     match user {
         Ok(user) => {
-            WebSocketUpgrade::new().handle(req, res, |ws| async move {
+            WebSocketUpgrade::new().upgrade(req, res, |ws| async move {
                 handle_socket(ws, user).await;
             }).await
         }

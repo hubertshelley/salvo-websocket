@@ -74,6 +74,26 @@ static NEXT_WS_ID: AtomicUsize = AtomicUsize::new(1);
 pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 
 /// salvo websocket 处理方法
+/// ## Example
+/// ```
+/// use salvo::{Request, Response};
+/// use salvo::extra::ws::WebSocketUpgrade;
+/// use salvo::http::{ParseError, StatusError};
+/// use salvo_websocket::handle_socket;
+/// #[handler]
+/// async fn user_connected(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+///     let user: Result<User, ParseError> = req.parse_queries();
+///     match user {
+///         Ok(user) => {
+///             WebSocketUpgrade::new().upgrade(req, res, |ws| async move {
+///                 handle_socket(ws, user).await;
+///             }).await
+///         }
+///         Err(_err) => {
+///             Err(StatusError::bad_request())
+///         }
+///     }
+/// }
 pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebSocket, _self: T) {
     // Use a counter to assign a new unique ID for this user.
     let ws_id = NEXT_WS_ID.fetch_add(1, Ordering::Relaxed);
@@ -116,6 +136,52 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
 
 #[async_trait]
 /// websocket处理器trait
+/// ## Example
+/// ```
+/// use salvo::Error;
+/// use salvo::extra::ws::Message;
+/// use tokio::sync::mpsc::UnboundedSender;
+/// use salvo_websocket::{WebSocketHandler, WS_CONTROLLER};
+/// #[derive(Debug, Clone, Deserialize)]
+/// struct User {
+///     name: String,
+///     room: String,
+/// }
+///
+/// #[async_trait]
+/// impl WebSocketHandler for User {
+///     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>) {
+///         tracing::info!("{} connected", ws_id);
+///         WS_CONTROLLER.write().await.join_group(self.room.clone(), sender).unwrap();
+///         WS_CONTROLLER.write().await.send_group(
+///             self.room.clone(),
+///             Message::text(format!("{:?} joined!", self.name)
+///             ),
+///         ).unwrap();
+///     }
+///
+///     async fn on_disconnected(&self, ws_id: usize) {
+///         tracing::info!("{} disconnected", ws_id);
+///     }
+///
+///     async fn on_receive_message(&self, msg: Message) {
+///         tracing::info!("{:?} received", msg);
+///         let msg = if let Ok(s) = msg.to_str() {
+///             s
+///         } else {
+///             return;
+///         };
+///         let new_msg = format!("<User#{}>: {}", self.name, msg);
+///         WS_CONTROLLER.write().await.send_group(self.room.clone(), Message::text(new_msg.clone())).unwrap();
+///     }
+///
+///     async fn on_send_message(&self, msg: Message) -> Result<Message, Error> {
+///         tracing::info!("{:?} sending", msg);
+///         Ok(msg)
+///     }
+/// }
+///
+/// ```
 pub trait WebSocketHandler {
     /// websocket客户端连接事件
     async fn on_connected(&self, ws_id: usize, sender: UnboundedSender<Result<Message, Error>>);
