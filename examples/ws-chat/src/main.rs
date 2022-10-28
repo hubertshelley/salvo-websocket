@@ -4,7 +4,7 @@
 // port from https://github.com/seanmonstar/warp/blob/master/examples/websocket_chat.rs
 
 use salvo::Error;
-use salvo::extra::ws::{Message, WebSocketUpgrade};
+use salvo::ws::{Message, WebSocketUpgrade};
 use salvo::http::ParseError;
 use salvo::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;

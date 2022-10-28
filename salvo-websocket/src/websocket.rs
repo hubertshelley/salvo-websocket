@@ -1,11 +1,11 @@
-use futures_util::{FutureExt, StreamExt};
+use futures_util::{future, FutureExt, SinkExt, StreamExt};
 use salvo::Error;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use once_cell::sync::Lazy;
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use salvo::extra::ws::{Message, WebSocket};
+use salvo::ws::{Message, WebSocket};
 use salvo::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -77,7 +77,7 @@ pub static WS_CONTROLLER: Lazy<Controller> = Lazy::new(Controller::default);
 /// ## Example
 /// ```
 /// use salvo::{Request, Response};
-/// use salvo::extra::ws::WebSocketUpgrade;
+/// use salvo::ws::WebSocketUpgrade;
 /// use salvo::http::{ParseError, StatusError};
 /// use salvo_websocket::handle_socket;
 /// #[handler]
@@ -101,14 +101,14 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
     tracing::info!("new ws connected: {}", ws_id);
 
     // Split the socket into a sender and receive of messages.
-    let (ws_sender, mut ws_reader) = ws.split();
+    let (mut ws_sender, mut ws_reader) = ws.split();
 
     // Use an unbounded channel to handle buffering and flushing of messages
     // to the websocket...
     let (sender, reader) = mpsc::unbounded_channel();
     let reader = UnboundedReceiverStream::new(reader);
     let fut = reader.forward(ws_sender).map(|result| {
-        eprintln!("{:?}", result);
+        eprintln!("发送：{:?}", result);
         if let Err(e) = result {
             tracing::error!(error = ?e, "websocket send error");
         }
@@ -139,7 +139,7 @@ pub async fn handle_socket<T: WebSocketHandler + Send + Sync + 'static>(ws: WebS
 /// ## Example
 /// ```
 /// use salvo::Error;
-/// use salvo::extra::ws::Message;
+/// use salvo::ws::Message;
 /// use tokio::sync::mpsc::UnboundedSender;
 /// use salvo_websocket::{WebSocketHandler, WS_CONTROLLER};
 /// #[derive(Debug, Clone, Deserialize)]
